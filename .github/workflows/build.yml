@@ -1,0 +1,116 @@
+name: Build Plex fnOS Package
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (leave empty for latest)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Latest Version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(curl -sL "https://plex.tv/api/downloads/5.json" | \
+              jq -r '.computer.Linux.version' | cut -d'-' -f1)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Check if Release Exists
+        id: check
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Version ${{ steps.version.outputs.version }} exists, skipping build"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Version ${{ steps.version.outputs.version }} not found, starting build"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Package
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          echo "==> Getting download URL"
+          FULL_VERSION=$(curl -sL "https://plex.tv/api/downloads/5.json" | \
+            jq -r '.computer.Linux.version')
+          DOWNLOAD_URL=$(curl -sL "https://plex.tv/api/downloads/5.json" | \
+            jq -r '.computer.Linux.releases[] | select(.build == "linux-x86_64" and .distro == "debian") | .url')
+          
+          echo "==> Downloading Plex Media Server $VERSION"
+          curl -L -o plex.deb "$DOWNLOAD_URL"
+          ls -lh plex.deb
+          
+          echo "==> Extracting deb"
+          ar -x plex.deb
+          mkdir -p extracted
+          tar -xf data.tar.xz -C extracted
+          du -sh extracted/usr/lib/plexmediaserver/*
+          
+          echo "==> Building app.tgz"
+          mkdir -p app_root/lib
+          cp -a extracted/usr/lib/plexmediaserver/* app_root/
+          
+          mkdir -p app_root/bin
+          cp fnos/bin/plex-server app_root/bin/
+          chmod +x app_root/bin/plex-server
+          
+          du -sh app_root/*
+          cd app_root && tar -czf ../app.tgz . && cd ..
+          ls -lh app.tgz
+          
+          echo "==> Calculating checksum and updating manifest"
+          CHECKSUM=$(md5sum app.tgz | cut -d' ' -f1)
+          
+          sed -i "s/^version.*/version         = ${VERSION}/" fnos/manifest
+          sed -i "s/^checksum.*/checksum        = ${CHECKSUM}/" fnos/manifest
+          
+          echo "==> Building fpk"
+          mkdir -p package
+          mv app.tgz package/
+          cp -a fnos/cmd fnos/config fnos/wizard fnos/ui fnos/*.sc fnos/ICON*.PNG package/ 2>/dev/null || true
+          cp fnos/manifest package/
+          
+          cd package && tar -czf ../plexmediaserver_${VERSION}_amd64.fpk * && cd ..
+          
+          echo "==> Done"
+          ls -lh plexmediaserver_${VERSION}_amd64.fpk
+
+      - name: Create Release
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          FULL_VERSION=$(curl -sL "https://plex.tv/api/downloads/5.json" | \
+            jq -r '.computer.Linux.version')
+          
+          gh release create "v${VERSION}" \
+            --title "Plex Media Server ${VERSION} for fnOS" \
+            --notes "Auto-built fnOS package
+
+          - Based on [Plex Media Server ${FULL_VERSION}](https://www.plex.tv/media-server-downloads/)
+          - Architecture: x86_64 (amd64)
+          - Platform: fnOS
+          - Default port: 32400" \
+            plexmediaserver_${VERSION}_amd64.fpk
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
