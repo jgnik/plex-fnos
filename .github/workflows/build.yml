@@ -207,7 +207,7 @@ jobs:
           - 平台: fnOS
           - 默认端口: 32400${REVISION_NOTE}
 
-          **国内镜像**: https://ghproxy.com/https://github.com/conversun/plex-fnos/releases/download/${RELEASE_TAG}/" \
+          **国内镜像**: https://ghfast.top/https://github.com/conversun/plex-fnos/releases/download/${RELEASE_TAG}/" \
             artifacts/fpk-amd64/*.fpk \
             artifacts/fpk-arm64/*.fpk
         env:
