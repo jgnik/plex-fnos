@@ -100,10 +100,10 @@ jobs:
         include:
           - arch: amd64
             plex_build: linux-x86_64
-            manifest_arch: x86_64
+            manifest_platform: x86
           - arch: arm64
             plex_build: linux-aarch64
-            manifest_arch: aarch64
+            manifest_platform: arm
     
     steps:
       - name: Checkout
@@ -114,7 +114,7 @@ jobs:
           VERSION="${{ needs.check-version.outputs.version }}"
           ARCH="${{ matrix.arch }}"
           PLEX_BUILD="${{ matrix.plex_build }}"
-          MANIFEST_ARCH="${{ matrix.manifest_arch }}"
+          MANIFEST_PLATFORM="${{ matrix.manifest_platform }}"
           
           echo "==> Building for $ARCH (Plex build: $PLEX_BUILD)"
           
@@ -149,7 +149,7 @@ jobs:
           CHECKSUM=$(md5sum app.tgz | cut -d' ' -f1)
           
           sed -i "s/^version.*/version         = ${VERSION}/" fnos/manifest
-          sed -i "s/^arch.*/arch            = ${MANIFEST_ARCH}/" fnos/manifest
+          sed -i "s/^platform.*/platform        = ${MANIFEST_PLATFORM}/" fnos/manifest
           sed -i "s/^checksum.*/checksum        = ${CHECKSUM}/" fnos/manifest
           
           echo "==> Building fpk"

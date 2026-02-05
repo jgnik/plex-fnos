@@ -40,11 +40,11 @@ detect_arch() {
     case "$ARCH" in
         amd64)
             PLEX_BUILD="linux-x86_64"
-            MANIFEST_ARCH="x86_64"
+            MANIFEST_PLATFORM="x86"
             ;;
         arm64)
             PLEX_BUILD="linux-aarch64"
-            MANIFEST_ARCH="aarch64"
+            MANIFEST_PLATFORM="arm"
             ;;
         *)
             error "Invalid architecture: $ARCH. Must be amd64 or arm64."
@@ -52,7 +52,7 @@ detect_arch() {
     esac
     
     info "Plex build type: $PLEX_BUILD"
-    info "Manifest arch: $MANIFEST_ARCH"
+    info "Manifest platform: $MANIFEST_PLATFORM"
 }
 
 get_latest_version() {
@@ -131,7 +131,7 @@ update_manifest() {
     local checksum=$(md5 -q "$WORK_DIR/app.tgz" 2>/dev/null || md5sum "$WORK_DIR/app.tgz" | cut -d' ' -f1)
     
     sed -i.tmp "s/^version.*=.*/version         = ${PLEX_VERSION}/" "$PKG_DIR/manifest"
-    sed -i.tmp "s/^arch.*=.*/arch            = ${MANIFEST_ARCH}/" "$PKG_DIR/manifest"
+    sed -i.tmp "s/^platform.*=.*/platform        = ${MANIFEST_PLATFORM}/" "$PKG_DIR/manifest"
     sed -i.tmp "s/^checksum.*=.*/checksum        = ${checksum}/" "$PKG_DIR/manifest"
     rm -f "$PKG_DIR/manifest.tmp"
 }
