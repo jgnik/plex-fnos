@@ -4,7 +4,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PKG_DIR="$SCRIPT_DIR/fnos"
 WORK_DIR="/tmp/plex_update_$$"
-PLEX_VERSION="${1:-latest}"
+PLEX_VERSION="${PLEX_VERSION:-latest}"
+ARCH="${ARCH:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,6 +18,42 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
+
+detect_arch() {
+    if [ -z "$ARCH" ]; then
+        local machine=$(uname -m)
+        case "$machine" in
+            x86_64|amd64)
+                ARCH=amd64
+                ;;
+            aarch64|arm64)
+                ARCH=arm64
+                ;;
+            *)
+                error "Unsupported architecture: $machine. Use --arch to specify amd64 or arm64."
+                ;;
+        esac
+        info "Auto-detected architecture: $ARCH"
+    fi
+    
+    # Set architecture-specific variables
+    case "$ARCH" in
+        amd64)
+            PLEX_BUILD="linux-x86_64"
+            MANIFEST_ARCH="x86_64"
+            ;;
+        arm64)
+            PLEX_BUILD="linux-aarch64"
+            MANIFEST_ARCH="aarch64"
+            ;;
+        *)
+            error "Invalid architecture: $ARCH. Must be amd64 or arm64."
+            ;;
+    esac
+    
+    info "Plex build type: $PLEX_BUILD"
+    info "Manifest arch: $MANIFEST_ARCH"
+}
 
 get_latest_version() {
     info "获取最新版本信息..."
@@ -35,15 +72,27 @@ get_latest_version() {
 get_download_url() {
     local api_response=$(curl -sL "https://plex.tv/api/downloads/5.json" 2>/dev/null)
     
-    # 查找 debian distro 且 build 为 linux-x86_64 的 URL
-    DOWNLOAD_URL=$(echo "$api_response" | grep -o '"build":"linux-x86_64","distro":"debian","url":"[^"]*"' | head -1 | sed 's/.*"url":"//;s/"$//')
+    # 使用 jq 查找对应架构的下载链接
+    if command -v jq &>/dev/null; then
+        DOWNLOAD_URL=$(echo "$api_response" | jq -r ".computer.Linux.releases[] | select(.build == \"$PLEX_BUILD\" and .distro == \"debian\") | .url")
+    else
+        # Fallback: 使用 grep 查找
+        case "$PLEX_BUILD" in
+            linux-x86_64)
+                DOWNLOAD_URL=$(echo "$api_response" | grep -o '"build":"linux-x86_64","distro":"debian","url":"[^"]*"' | head -1 | sed 's/.*"url":"//;s/"$//')
+                ;;
+            linux-aarch64)
+                DOWNLOAD_URL=$(echo "$api_response" | grep -o '"build":"linux-aarch64","distro":"debian","url":"[^"]*"' | head -1 | sed 's/.*"url":"//;s/"$//')
+                ;;
+        esac
+    fi
     
-    [ -z "$DOWNLOAD_URL" ] && error "无法获取下载链接"
+    [ -z "$DOWNLOAD_URL" ] && error "无法获取 $ARCH 架构的下载链接"
     info "下载链接: $DOWNLOAD_URL"
 }
 
 download_deb() {
-    info "下载 Plex Media Server..."
+    info "下载 Plex Media Server ($ARCH)..."
     mkdir -p "$WORK_DIR"
     
     curl -L -f -o "$WORK_DIR/plex.deb" "$DOWNLOAD_URL" || error "下载失败"
@@ -82,12 +131,13 @@ update_manifest() {
     local checksum=$(md5 -q "$WORK_DIR/app.tgz" 2>/dev/null || md5sum "$WORK_DIR/app.tgz" | cut -d' ' -f1)
     
     sed -i.tmp "s/^version.*=.*/version         = ${PLEX_VERSION}/" "$PKG_DIR/manifest"
+    sed -i.tmp "s/^arch.*=.*/arch            = ${MANIFEST_ARCH}/" "$PKG_DIR/manifest"
     sed -i.tmp "s/^checksum.*=.*/checksum        = ${checksum}/" "$PKG_DIR/manifest"
     rm -f "$PKG_DIR/manifest.tmp"
 }
 
 build_fpk() {
-    local fpk_name="plexmediaserver_${PLEX_VERSION}_amd64.fpk"
+    local fpk_name="plexmediaserver_${PLEX_VERSION}_${ARCH}.fpk"
     info "打包 $fpk_name..."
     
     mkdir -p "$WORK_DIR/package"
@@ -108,17 +158,56 @@ build_fpk() {
 
 show_help() {
     cat << EOF
-用法: $0 [版本号|latest]
+用法: $0 [选项] [版本号|latest]
+
+选项:
+  --arch ARCH       指定目标架构 (amd64 或 arm64)，默认自动检测
+  -h, --help        显示此帮助信息
 
 示例:
-  $0                    # 最新稳定版
-  $0 1.42.2.10156       # 指定版本
-  $0 latest             # 最新版本
+  $0                        # 最新稳定版，自动检测架构
+  $0 --arch arm64           # 最新版本，ARM64 架构
+  $0 --arch amd64 1.42.2.10156  # 指定版本，AMD64 架构
+  $0 1.42.2.10156           # 指定版本，自动检测架构
+
+环境变量:
+  ARCH              目标架构 (amd64 或 arm64)
+  PLEX_VERSION      Plex 版本号
+
+支持的架构:
+  amd64 (x86_64)    Intel/AMD 64位处理器
+  arm64 (aarch64)   ARM 64位处理器
 EOF
 }
 
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            --arch)
+                ARCH="$2"
+                shift 2
+                ;;
+            --arch=*)
+                ARCH="${1#*=}"
+                shift
+                ;;
+            -*)
+                error "未知选项: $1"
+                ;;
+            *)
+                PLEX_VERSION="$1"
+                shift
+                ;;
+        esac
+    done
+}
+
 main() {
-    [ "$1" = "-h" ] || [ "$1" = "--help" ] && { show_help; exit 0; }
+    parse_args "$@"
     
     echo "========================================"
     echo "  Plex Media Server fnOS Package Builder"
@@ -130,6 +219,8 @@ main() {
     done
     
     [ -f "$PKG_DIR/manifest" ] || error "找不到 fnos 目录"
+    
+    detect_arch
     
     local current_version=$(grep "^version" "$PKG_DIR/manifest" | awk -F'=' '{print $2}' | tr -d ' ')
     info "当前版本: $current_version"
@@ -150,7 +241,7 @@ main() {
     build_fpk
     
     echo
-    info "完成: $current_version -> $PLEX_VERSION"
+    info "完成: $current_version -> $PLEX_VERSION ($ARCH)"
 }
 
 main "$@"
