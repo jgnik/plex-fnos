@@ -36,7 +36,7 @@ get_download_url() {
     local api_response=$(curl -sL "https://plex.tv/api/downloads/5.json" 2>/dev/null)
     
     # 查找 debian distro 且 build 为 linux-x86_64 的 URL
-    DOWNLOAD_URL=$(echo "$api_response" | grep -o '"build":"linux-x86_64","distro":"debian","url":"[^"]*"' | head -1 | sed 's/.*"url":"//;s/"$//')
+    DOWNLOAD_URL=$(echo "$api_response" | grep -o '"build":"linux-aarch64","distro":"debian","url":"[^"]*"' | head -1 | sed 's/.*"url":"//;s/"$//')
     
     [ -z "$DOWNLOAD_URL" ] && error "无法获取下载链接"
     info "下载链接: $DOWNLOAD_URL"
