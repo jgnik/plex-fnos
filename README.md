@@ -6,11 +6,6 @@ Auto-build Plex Media Server packages for fnOS - Daily updates from official rel
 
 从 [Releases](https://github.com/conversun/plex-fnos/releases) 下载最新的 `.fpk` 文件。
 
-| 架构 | 文件名 | 适用设备 |
-|------|--------|----------|
-| x86_64 (amd64) | `plexmediaserver_x.x.x_amd64.fpk` | Intel/AMD 处理器 |
-| aarch64 (arm64) | `plexmediaserver_x.x.x_arm64.fpk` | ARM64 处理器 |
-
 ## Install
 
 1. 根据你的设备架构下载对应的 `.fpk` 文件
@@ -25,12 +20,9 @@ Auto-build Plex Media Server packages for fnOS - Daily updates from official rel
 
 GitHub Actions 每天自动检查 [Plex 官方下载](https://www.plex.tv/media-server-downloads/)，有新版本时自动构建并发布。
 
-## Architecture
+## Open Source
 
-- **Platform**: fnOS (飞牛私有云)
-- **Supported Architectures**: 
-  - x86_64 (amd64) - Intel/AMD 64-bit
-  - aarch64 (arm64) - ARM 64-bit
+本项目完全开源，仅从官方渠道下载原版软件并重新打包，**无任何后门或修改**。构建脚本和 CI 流程公开透明，欢迎审查。
 
 ## Local Build
 
